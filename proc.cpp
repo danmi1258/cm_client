@@ -133,9 +133,11 @@ void igd_register(){
 	get_wan_config(&wan_cfg);
 	cJSON_AddStringToObject(json, "IPAddr", inet_ntoa(wan_cfg.ip));
 
-	struct nos_lan_cfg lan;
-	get_lan_config(&lan);
-	get_ip_by_mac((unsigned char *)dev_sn_mac,&lan.ip);
+	struct nc_if *ifc;
+	ifc = nc_uiname2if("LAN");
+	MacToStr(dev_sn_mac,ifc->mac_clone);
+	DEBUG_PRINT("lan mac:%s\n",dev_sn_mac);
+
 	cJSON_AddStringToObject(json, "MAC", dev_sn_mac);
 
 	out = cJSON_Print(json);

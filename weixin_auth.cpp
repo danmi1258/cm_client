@@ -179,7 +179,7 @@ int weixin_auth_init(int  group){
 		kid_map[group].acl_pass_id.assign(v_ret.begin(),v_ret.end());
 	}
 
-	//start_old_timer();
+	start_old_timer();
 	return 0;
 }
 
@@ -339,21 +339,32 @@ void on_check_host_weixin_auth(char* body,char* host_mac,int if_index,unsigned i
 	json = cJSON_Parse(body);
 	DEBUG_PRINT("on_check_host_weixin_auth");
 	DEBUG_PRINT("http body %s\n",body);
+	char site_mac[20];
+	MacToStr(site_mac,(unsigned char*)host_mac);
+	map<string,host_cach_t>::iterator itr;
+	itr = hostcach.find(string(site_mac));
 	if( json != NULL){
 		json_tmp = cJSON_GetObjectItem(json,"code");
 		if( json_tmp->valueint == 200){
 			DEBUG_PRINT("http 200\n");
-			char site_mac[20];
-			MacToStr(site_mac,(unsigned char*)host_mac);
-			int group = get_group_by_ifidx(if_index);
-			if( add_skip_by_ip(group,ip) >= 0){
-				host_cach_t ht;
-				ht.old_time_couter = 60;
-				ht.ip = ip;
-				hostcach[string(site_mac)] = ht;
+			if( itr == hostcach.end()){
+				int group = get_group_by_ifidx(if_index);
+				if( add_skip_by_ip(group,ip) >= 0){
+					host_cach_t ht;
+					ht.old_time_couter = OLD_TIME_COUNT;
+					ht.ip = ip;
+					hostcach[string(site_mac)] = ht;
+				}
+			}else{
+				itr->second.old_time_couter = OLD_TIME_COUNT;
 			}
 		}else if( json_tmp->valueint == 400){
 			DEBUG_PRINT("on_check_host_weixin_auth http 400\n");
+			if( itr != hostcach.end()){
+				del_skip_by_ip(itr->second.ip);
+				hostcach.erase(itr);
+				DEBUG_PRINT("host_cach erase %s\n",host_mac);
+			}
 		}
 	}
 }
@@ -376,12 +387,12 @@ void add_weixin_auth(unsigned char* host_mac,unsigned int ip){
 			if( itr == hostcach.end()){
 				if( add_skip_by_ip(group,ip) >= 0){
 					host_cach_t ht;
-					ht.old_time_couter = 60;
+					ht.old_time_couter = OLD_TIME_COUNT;
 					ht.ip = ip;
 					hostcach[string(site_mac)] = ht;
 				}
 			}else{
-				itr->second.old_time_couter = 60;
+				itr->second.old_time_couter = OLD_TIME_COUNT;
 			}
 		}else{
 			DEBUG_PRINT("b_weixin_auth false\n");
@@ -397,12 +408,16 @@ void http_query_auth(unsigned char* host_mac,int if_idx,unsigned int ip){
 	get_lan_config(&lan);
 	get_ip_by_mac((unsigned char *)dev_sn_mac,&lan.ip);
 	char str_dev_sn_mac[20];
-	MacToStr(str_dev_sn_mac,(unsigned char *)dev_sn_mac);
+	struct nc_if *ifc;
+	ifc = nc_uiname2if("LAN");
+	if( ifc != NULL){
+		MacToStr(str_dev_sn_mac,ifc->mac_clone);
+		DEBUG_PRINT("lan mac:%s\n",str_dev_sn_mac);
+	}else{
+		DEBUG_PRINT("ifc NULL\n");
+		return;
+	}
 
-	/*char ssid_eth[6];
-	get_wl_mac(if_idx,ssid_eth);
-	char str_ssid_eth[20];
-	MacToStr(str_ssid_eth,(unsigned char *)ssid_eth);*/
 
 	char site_mac[20];
 	MacToStr(site_mac,(unsigned char*)host_mac);
@@ -412,7 +427,7 @@ void http_query_auth(unsigned char* host_mac,int if_idx,unsigned int ip){
 
 	replace_mac(site_mac,tmp_site_mac);
 	replace_mac(str_dev_sn_mac,tmp_str_dev_sn_mac);
-	//replace_mac(str_ssid_eth,tmp_str_ssid_eth);
+
 	char str_ssid_eth[2];
 	sprintf(str_ssid_eth,"%d",if_idx);
 	string params = "/device_server/api/api_weixin.php?action=againcheck&moble_mac="+
@@ -445,7 +460,7 @@ void check_host_weixin_auth(unsigned char* host_mac,unsigned int ip){
 		if( (group = get_group_by_ifidx(if_idx)) >= 0){
 			if( itr != hostcach.end()){
 				DEBUG_PRINT("host_cach have host\n");
-				itr->second.old_time_couter = 60;
+				itr->second.old_time_couter = OLD_TIME_COUNT;
 			}else{
 				DEBUG_PRINT("http_query_auth\n");
 				http_query_auth(host_mac,if_idx,ip);

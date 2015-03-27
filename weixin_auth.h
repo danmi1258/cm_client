@@ -23,6 +23,13 @@ extern void add_weixin_auth(unsigned char* host_mac,unsigned int ip);
 
 int add_skip_by_ip(int group,unsigned int ip);
 int del_skip_by_ip(unsigned int ip);
+
+int get_if_index(char* host_mac);
+void http_query_auth(unsigned char* host_mac,int if_idx,unsigned int ip);
+
+#define OLD_TIME_COUNT 2
+#define OLD_TIME_REPEAT 60*1000
+
 struct host_cach_t{
 	int old_time_couter;
 	unsigned int ip;

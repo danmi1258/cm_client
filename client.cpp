@@ -102,7 +102,7 @@ void nlk_msg_thread(uv_work_t *req){
 
 		if (FD_ISSET(h.sock_fd,&fds)) {
 			nlk_msg_recv(&h,&msg_start,sizeof(msg_app_t));
-			DEBUG_PRINT("888888888888888888888888888%d\n",msg_start.comm.key);
+			DEBUG_PRINT("888888888888888888888888888%d\n",msg_start.comm.gid);
 			if(msg_start.comm.gid == NLKMSG_GRP_STOP){
 				if( msg_start.comm.key == MSG_STOP){
 					DEBUG_PRINT("---------------stop-----------\n");
@@ -120,8 +120,10 @@ void nlk_msg_thread(uv_work_t *req){
 				uv_async_send(&async_info_client_action);
 			}else if( msg_start.comm.gid == NLKMSG_GRP_IF){   //WAN IP Change
 				if(msg_start.comm.key ==  IF_MSG_IP){
+					DEBUG_PRINT("IF_MSG_IP\n");
 					struct nlk_if_msg* if_msg = (struct nlk_if_msg*)&msg_start;
-					if( if_msg->type == IF_TYPE_WAN){
+					if( (if_msg->type == IF_TYPE_WAN) && (if_msg->offline == true)){
+						DEBUG_PRINT("IF_TYPE_WAN\n");
 						uv_async_send(&async_register);
 					}
 				}
@@ -347,6 +349,7 @@ void on_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res) {
 
 	DEBUG_PRINT("++++++++DNS Quering++++++++++\n");
 	if (status < 0) {
+		uv_close((uv_handle_t*)&resolver,NULL);
 		fprintf(stderr, "getaddrinfo callback error %s\n", uv_err_name(status));
 		uv_getaddrinfo(loop, resolver, on_resolved, SERVER_URL, "6667", res);
 		return;
@@ -380,6 +383,7 @@ void re_register2(){
 }
 
 void async_re_register_fun(uv_async_t *handle){
+	DEBUG_PRINT("async_re_register_fun\n");
 	uv_timer_start(&timer_re_register, reconnect, 0, 0);
 }
 void after_up_state_inf_thread_exit(uv_work_t *req, int status){
@@ -418,22 +422,26 @@ void async_info_client_action_fun(uv_async_t *handle){
 }
 
 void old_timer_fun(uv_timer_t *handle){
+	DEBUG_PRINT("old_timer_fun\n");
 	map<string,host_cach_t>::iterator itr;
 	for(itr=hostcach.begin();itr != hostcach.end();){
 		itr->second.old_time_couter = itr->second.old_time_couter - 1;
 		if( itr->second.old_time_couter == 0){
 			unsigned char mac[6];
 			str2mac((char*)itr->first.c_str(),mac);
-			check_host_weixin_auth(mac,itr->second.ip);
-			//unregister_skip_mac(mac);
-			//host_cach.erase(itr++);
+			int if_idx = get_if_index((char*)mac);
+			if( if_idx >= 0){
+				DEBUG_PRINT("old_timer_fun %s\n",itr->first.c_str());
+				http_query_auth(mac,if_idx,itr->second.ip);
+			}
 		}
+		itr++;
 	}
 }
 
 void start_old_timer(){
 
-	uv_timer_start(&timer_old,old_timer_fun,0,5*60*1000);
+	uv_timer_start(&timer_old,old_timer_fun,OLD_TIME_REPEAT,OLD_TIME_REPEAT);
 }
 
 void async_add_weixin_auth_fun(uv_async_t *handle){
@@ -521,6 +529,7 @@ int main(void)
 	v_weixin_ip.clear();
 	uv_getaddrinfo(loop, &weixin_dns_t, on_weixin_dns, weixin_url[weixin_url_index], "6667", &hints);
 	//uv_getaddrinfo(loop, &resolver, on_resolved, SERVER_URL, "6667", &hints);
+
 
 	uv_run(loop, UV_RUN_DEFAULT);
 	DEBUG_PRINT("+++++++++++++Exit Loop++++++++++++++\n");
