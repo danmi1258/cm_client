@@ -179,7 +179,7 @@ int weixin_auth_init(int  group){
 		kid_map[group].acl_pass_id.assign(v_ret.begin(),v_ret.end());
 	}
 
-	start_old_timer();
+	//start_old_timer();
 	return 0;
 }
 

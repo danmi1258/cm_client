@@ -46,19 +46,27 @@ string strMagicNum="00000000000000000000000000000000";
 //in other thread so async_client_write data  to main
 void up_state_info(){
 
+	DEBUG_PRINT("up_state_info\n");
 	cJSON *json,*json_array,*fld;
 	char *out;
 
 	json = cJSON_CreateObject();
 	cJSON_AddStringToObject(json, "RPCMethod", "info");
 
-	unsigned long in_speed = 0;
-	unsigned long out_speed = 0;
+	double in_speed = 0;
+	double out_speed = 0;
 	struct if_stat stat;
-	get_if_stat("WAN1", &stat);
-	in_speed = stat.in.speed;
-	out_speed = stat.out.speed;
-	//get_wan_width_speed(&in_speed,&out_speed);
+	NOS_STRUCT_INIT(&stat);
+
+	int r = get_if_stat("WAN1", &stat);
+	DEBUG_PRINT("get_if_stat r=%d\n",r);
+	DEBUG_PRINT("in speed %d\n",stat.in.speed);
+	DEBUG_PRINT("out byte %lld\n",stat.out.byte);
+	long run_time = get_run_time();
+	DEBUG_PRINT("run_time:%d\n",run_time);
+	in_speed = (double)(stat.in.byte/1024)/run_time;
+	out_speed = (double)(stat.out.byte/1024)/run_time;
+
 	cJSON_AddNumberToObject(json,"Up",out_speed);
 	cJSON_AddNumberToObject(json,"Down",in_speed);
 
@@ -83,30 +91,43 @@ void up_state_info(){
 		idx = wl_get_site(0, idx, &site);
 		if(idx >= 0)
 		{
-			cJSON_AddItemToArray(json_array,fld=cJSON_CreateObject());
-			char site_mac[13];
-			MacToStr(site_mac,site.bssid);
-			cJSON_AddStringToObject(fld,"MAC",site_mac);
-			cJSON_AddStringToObject(fld,"SSID",(char*)site.ssid);
-			cJSON_AddNumberToObject(fld,"Strength",site.rssi);
+			if(strlen((char*)site.ssid) != 0){
+				cJSON_AddItemToArray(json_array,fld=cJSON_CreateObject());
+				char site_mac[13];
+				MacToStr(site_mac,site.bssid);
+				cJSON_AddStringToObject(fld,"MAC",site_mac);
+				cJSON_AddStringToObject(fld,"SSID",(char*)site.ssid);
+				cJSON_AddNumberToObject(fld,"Strength",abs(site.rssi));
+			}
 		}
 	}while(idx > 0);
 
 	cJSON_AddItemToObject(json,"AroundWifi",json_array);
 
+	DEBUG_PRINT("0000000000000\n");
 	out = cJSON_Print(json);
-	DEBUG_PRINT("%s\n",out);
-
-	//client_write(out,strlen(out));
-	async_client_write.data = (void*)out;
-	uv_async_send(&async_client_write);
+	//DEBUG_PRINT("%s\n",out);
+	printf("%s\n",out);
 	c_state = c_up_stat_info;
+	//client_write(out,strlen(out));
+	DEBUG_PRINT("1111111111\n");
+	async_client_write.data = (void*)out;
+	DEBUG_PRINT("222222222\n");
+	uv_async_send(&async_client_write);
+	DEBUG_PRINT("3333333333\n");
+
 
 	cJSON_Delete(json);
 	//free(out);
 }
 
+bool b_get_param = false;
+bool b_info_up_stat_info = false;
+
 void igd_register(){
+
+	b_get_param = false;
+	b_info_up_stat_info = false;
 
 	cJSON *json;
 	char *out;
@@ -117,7 +138,7 @@ void igd_register(){
 
 	struct nos_device_oem vendor;
 	get_device_oem(&vendor);
-	cJSON_AddStringToObject(json, "Vendor", vendor.oem);
+	cJSON_AddStringToObject(json, "Vendor", "nowifi");
 
 	get_igd_model_name(buf_data,256);
 	cJSON_AddStringToObject(json, "Model", buf_data);
@@ -136,9 +157,11 @@ void igd_register(){
 	struct nc_if *ifc;
 	ifc = nc_uiname2if("LAN");
 	MacToStr(dev_sn_mac,ifc->mac_clone);
-	DEBUG_PRINT("lan mac:%s\n",dev_sn_mac);
+	char str_dev_sn_mac[20] = {0};
+	replace_mac(dev_sn_mac,str_dev_sn_mac);
+	DEBUG_PRINT("lan mac:%s\n",str_dev_sn_mac);
 
-	cJSON_AddStringToObject(json, "MAC", dev_sn_mac);
+	cJSON_AddStringToObject(json, "MAC", str_dev_sn_mac);
 
 	out = cJSON_Print(json);
 	DEBUG_PRINT("%s\n",out);
@@ -148,6 +171,7 @@ void igd_register(){
 
 	cJSON_Delete(json);
 	free(out);
+	DEBUG_PRINT("igd_register finish");
 }
 
 
@@ -160,15 +184,19 @@ void igd_register_second(){
 	json = cJSON_CreateObject();
 	cJSON_AddStringToObject(json, "RPCMethod", "Register");
 
-	struct nos_lan_cfg lan;
-	get_lan_config(&lan);
-	get_ip_by_mac((unsigned char *)dev_sn_mac,&lan.ip);
-	cJSON_AddStringToObject(json, "MAC", dev_sn_mac);
+	struct nc_if *ifc;
+	ifc = nc_uiname2if("LAN");
+	MacToStr(dev_sn_mac,ifc->mac_clone);
+	char str_dev_sn_mac[20] = {0};
+	replace_mac(dev_sn_mac,str_dev_sn_mac);
+	DEBUG_PRINT("lan mac:%s\n",str_dev_sn_mac);
+	cJSON_AddStringToObject(json, "MAC", str_dev_sn_mac);
 
 	memset(hwid_buf, 0, NOS_HWID_LEN);
 	get_device_hardware_id(hwid_buf);
 	char* tmp,*tmp1,*checksn;
 	tmp1 = bin_to_str(hwid_buf, NOS_HWID_LEN);
+	DEBUG_PRINT("hwid:%s\n",tmp1);
 	int len = strChallengeCode.size();
 	checksn = (char*)malloc(len + strlen(tmp1) + 1);
 	memcpy(checksn, strChallengeCode.c_str(), strChallengeCode.size());
@@ -193,7 +221,7 @@ void igd_register_second(){
 
 	cJSON_Delete(json);
 	free(out);
-
+	DEBUG_PRINT("igd_register_second finish\n");
 }
 
 void Get_Param(){
@@ -201,6 +229,7 @@ void Get_Param(){
 	cJSON *json;
 	char *out;
 
+	DEBUG_PRINT("Get_Param");
 	json = cJSON_CreateObject();
 
 	cJSON_AddStringToObject(json, "RPCMethod", "getParameter");
@@ -268,7 +297,7 @@ void info_client(struct nlk_host_msg *host){
 	out = cJSON_Print(json);
 	DEBUG_PRINT("%s\n",out);
 
-	//client_write(out,strlen(out));
+	client_write(out,strlen(out));
 	c_state = c_info_client;
 	cJSON_Delete(json);
 	free(host);
@@ -326,10 +355,13 @@ void hert_check(int interval){
 	json = cJSON_CreateObject();
 	cJSON_AddStringToObject(json, "RPCMethod", "Hb");
 
-	struct nos_lan_cfg lan;
-	get_lan_config(&lan);
-	get_ip_by_mac((unsigned char *)dev_sn_mac,&lan.ip);
-	cJSON_AddStringToObject(json, "MAC", dev_sn_mac);
+	struct nc_if *ifc;
+	ifc = nc_uiname2if("LAN");
+	MacToStr(dev_sn_mac,ifc->mac_clone);
+	char str_dev_sn_mac[20] = {0};
+	replace_mac(dev_sn_mac,str_dev_sn_mac);
+	DEBUG_PRINT("lan mac:%s\n",str_dev_sn_mac);
+	cJSON_AddStringToObject(json, "MAC", str_dev_sn_mac);
 
 	out = cJSON_Print(json);
 	DEBUG_PRINT("%s\n",out);
@@ -395,9 +427,6 @@ void proc_reg_second(int ret,cJSON *json){
 	case GOOD_DEV:
 		json_tmp = cJSON_GetObjectItem(json,"Interval");
 		if (json_tmp) {
-			Get_Param();
-			info_client_action_first();
-			start_up_stat_info();
 			int interval =  json_tmp->valueint;
 			hert_check(interval);
 		}
@@ -435,7 +464,7 @@ void proc_reg_first(int ret,cJSON *json){
 			return;
 		}else{
 			strChallengeCode = string(json_tmp->valuestring);
-			cJSON_Delete(json);
+			//cJSON_Delete(json);
 			igd_register_second();
 		}
 		break;
@@ -463,6 +492,7 @@ int apply_cfg(char* param){
 
 	json = cJSON_Parse(param);
 
+	DEBUG_PRINT("param:%s\n",param);
 	struct wireless_ap_cfg wifi_cfg_array[4];
 
 	for(int i = 0;i < 4; i++){
@@ -708,9 +738,11 @@ void proc_newparam(cJSON *json){
 			json_tmp = cJSON_GetObjectItem(json,"MagicNum");
 			strMagicNum = string(json_tmp->valuestring);
 			cJSON_AddNumberToObject(json_re, "Result", 0);
+			DEBUG_PRINT("apply_cfg success\n");
 		}
 		else{
 			cJSON_AddNumberToObject(json_re, "Result", -1);
+			DEBUG_PRINT("apply_cfg fail\n");
 		}
 		cJSON_AddNumberToObject(json_re, "ID", id);
 		out = cJSON_Print(json_re);
@@ -743,10 +775,12 @@ void proc_info_client_action(int ret,cJSON *json){
 	}
 }
 
+
 void parse_json(char* buf,unsigned int len){
 
 	cJSON *json,*json_tmp;
 
+	DEBUG_PRINT("json return %s\n",buf);
 	json = cJSON_Parse(buf);
 	if (!json) {
 		DEBUG_PRINT("cJSON_Parse Error\n");
@@ -773,13 +807,23 @@ void parse_json(char* buf,unsigned int len){
 				b_recv_suc = true;
 				proc_reg_first(ret,json);
 			}else if(c_state == c_registe_second){
+				b_recv_suc = true;
 				proc_reg_second(ret,json);
 			}else if(c_state == c_hert_check){
 				proc_hert_check(ret,json);
+				if( b_get_param == false){
+					Get_Param();
+					b_get_param = true;
+				}
 			}else if(c_state == c_get_param){
 				proc_getParam(ret,json);
+				info_client_action_first();
 			}else if( c_state == c_info_client){
 				proc_info_client_action(ret,json);
+				if( b_info_up_stat_info == false){
+					start_up_stat_info();
+					b_info_up_stat_info = true;
+				}
 			}
 		}
 	}
