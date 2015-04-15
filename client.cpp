@@ -555,7 +555,13 @@ void on_weixin_dns(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res)
 		uv_getaddrinfo(loop, &weixin_dns_t, on_weixin_dns, weixin_url[weixin_url_index], "6667", &hints);
 	}else{
 		b_weixin_dns_suc = true;
-		weixin_auth_init(UGRP_WIFI_1);
+		//weixin_auth_init(UGRP_WIFI_1);
+		server_ip.push_back(string("172.16.117.100"));
+		struct sockaddr_in dest;
+		server_index = 0;
+		uv_ip4_addr(server_ip[server_index].c_str(), SERVER_PORT, &dest);
+		uv_tcp_keepalive(&client_sock,1,60);
+		uv_tcp_connect(&connect_t, &client_sock, (const struct sockaddr*)&dest, on_connect);
 	}
 
 	uv_freeaddrinfo(res);
@@ -605,16 +611,8 @@ int main(void)
 	b_weixin_dns_suc = false;
 	weixin_url_index = 0;
 	v_weixin_ip.clear();
-	//uv_getaddrinfo(loop, &weixin_dns_t, on_weixin_dns, weixin_url[weixin_url_index], "6667", &hints);
+	uv_getaddrinfo(loop, &weixin_dns_t, on_weixin_dns, weixin_url[weixin_url_index], "6667", &hints);
 	//uv_getaddrinfo(loop, &resolver, on_resolved, SERVER_URL, "6667", &hints);
-
-	server_ip.push_back(string("172.16.117.100"));
-	struct sockaddr_in dest;
-	server_index = 0;
-	uv_ip4_addr(server_ip[server_index].c_str(), SERVER_PORT, &dest);
-	uv_tcp_keepalive(&client_sock,1,60);
-
-	uv_tcp_connect(&connect_t, &client_sock, (const struct sockaddr*)&dest, on_connect);
 
 
 	uv_run(loop, UV_RUN_DEFAULT);

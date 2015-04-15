@@ -44,6 +44,9 @@ string strChallengeCode;
 hertbit hb;
 string strMagicNum="00000000000000000000000000000000";
 //in other thread so async_client_write data  to main
+
+uint64_t save_in_byte = 0;
+uint64_t save_out_byte = 0;
 void up_state_info(){
 
 	DEBUG_PRINT("up_state_info\n");
@@ -58,14 +61,24 @@ void up_state_info(){
 	struct if_stat stat;
 	NOS_STRUCT_INIT(&stat);
 
+
 	int r = get_if_stat("WAN1", &stat);
 	DEBUG_PRINT("get_if_stat r=%d\n",r);
 	DEBUG_PRINT("in speed %d\n",stat.in.speed);
 	DEBUG_PRINT("out byte %lld\n",stat.out.byte);
-	long run_time = get_run_time();
-	DEBUG_PRINT("run_time:%d\n",run_time);
-	in_speed = (double)(stat.in.byte/1024)/run_time;
-	out_speed = (double)(stat.out.byte/1024)/run_time;
+	if( (save_in_byte == 0) && (save_out_byte == 0)){
+
+		save_in_byte = stat.in.speed;
+		save_out_byte = stat.out.byte;
+
+		in_speed = 0;
+		out_speed = 0;
+
+
+	}else{
+		in_speed = (double)((stat.in.byte - save_in_byte)/(1024*3600));
+		out_speed = (double)((stat.out.byte - save_out_byte )/(1024*3600));
+	}
 
 	cJSON_AddNumberToObject(json,"Up",out_speed);
 	cJSON_AddNumberToObject(json,"Down",in_speed);
@@ -125,6 +138,9 @@ bool b_get_param = false;
 bool b_info_up_stat_info = false;
 
 void igd_register(){
+
+	save_in_byte = 0;
+	save_out_byte = 0;
 
 	b_get_param = false;
 	b_info_up_stat_info = false;
@@ -492,13 +508,15 @@ int apply_cfg(char* param){
 
 	json = cJSON_Parse(param);
 
-	DEBUG_PRINT("param:%s\n",param);
+	//printf("param:%s\n",param);
 	struct wireless_ap_cfg wifi_cfg_array[4];
 
 	for(int i = 0;i < 4; i++){
-		memset(&wifi_cfg_array[i],0,sizeof(wifi_cfg_array[i]));
+		memset(&wifi_cfg_array[i],0,sizeof(wireless_ap_cfg));
+		wifi_cfg_array[i].size_of_struct = sizeof(wireless_ap_cfg);
 	}
 
+	DEBUG_PRINT("aaaaaaaaaaa\n");
 	int ifx, idx,i=0;
 	struct wifi_if_ability *ifs;
 	struct wifi_ability *abi;
@@ -512,22 +530,26 @@ int apply_cfg(char* param){
 			}
 		}
 	}
-
-	json_tmp = cJSON_GetObjectItem(json,"single");
+	DEBUG_PRINT("bbbbbbbbbbbbb\n");
+	json_tmp = cJSON_GetObjectItem(json,"Private");
 	json_wifi = cJSON_GetObjectItem(json_tmp,"radio");
-
+	DEBUG_PRINT("ccccccccccc\n");
 	int radio = json_wifi->valueint;
 
+	DEBUG_PRINT("i=%d\n",i);
 	if( radio ==  1){
 		for(int j = 0;j < i; j++){
 			char wifi_idx[6] = {0};
 			sprintf(wifi_idx,"wifi%d",j);
+			DEBUG_PRINT("wifi_idx:%s\n",wifi_idx);
 			json_tmp = cJSON_GetObjectItem(json,wifi_idx);
 			json_wifi = cJSON_GetObjectItem(json_tmp,"ssid");
+			DEBUG_PRINT("ssid:%s\n",json_wifi->valuestring);
 			snprintf((char*)wifi_cfg_array[j].ssid,sizeof(wifi_cfg_array[j].ssid),"%s",json_wifi->valuestring);
 			json_wifi = cJSON_GetObjectItem(json_tmp,"broad");
 			wifi_cfg_array[j].broadcast_ssid = json_wifi->valueint;
 			json_wifi = cJSON_GetObjectItem(json_tmp,"auth_type");
+			DEBUG_PRINT("auth_type:%s\n",json_wifi->valuestring);
 			if(strcmp(json_wifi->valuestring,"system") == 0){
 				//if weixin quth  destory it
 				switch(j){
@@ -604,9 +626,17 @@ int apply_cfg(char* param){
 						wifi_cfg_array[j].sec.wpa.rekey_time = 3600;
 						break;
 					}
+				}else{
+					wifi_cfg_array[j].encrypt = W_EN_NONE;
 				}
 			}else if( strcmp(json_wifi->valuestring,"weixin") == 0 ){
+				DEBUG_PRINT("weixin\n");
 				int ret = 0;
+				DEBUG_PRINT("j=%d\n",j);
+				DEBUG_PRINT("%d  %d\n",wifi_cfg_array[j].auth,wifi_cfg_array[j].encrypt);
+				wifi_cfg_array[j].auth = W_AUTH_OPEN; //weixin  NONE SYSTEM AUTH
+				wifi_cfg_array[j].encrypt = W_EN_NONE;
+				DEBUG_PRINT("None\n");
 				switch(j){
 				case 0:
 					if( is_weixin_auth(UGRP_WIFI_1) == false)
@@ -629,6 +659,7 @@ int apply_cfg(char* param){
 					break;
 				}
 
+				DEBUG_PRINT("weixin_auth_init ret:%d\n",ret);
 				if( ret < 0)
 					return -1;
 			}
@@ -649,21 +680,28 @@ int apply_cfg(char* param){
 			}
 		}
 
+		i = 0;
+		DEBUG_PRINT("333333333333\n");
+		wl_abi_get(&abi);
 		for(ifx = 0; ifx < abi ->if_sum; ifx++){
 			ifs = &abi->ifs[ifx];
 			for(idx = 0; idx < ifs->ext_sum; idx++){
 				if( i < 4){
-					if( wl_set_ssid(ifx,idx,&wifi_cfg_array[i]) != 0)
+					DEBUG_PRINT("iiiiiiiiii%d %d %d\n",i,wifi_cfg_array[i].auth,wifi_cfg_array[i].encrypt);
+					if( wl_set_ssid(ifx,idx,&wifi_cfg_array[i]) != 0){
 						return -1;
+					}
 					i++;
 				}
 			}
 		}
-
+		DEBUG_PRINT("444444444\n");
 		struct wifi_adv_cfg cfg;
 		for(ifx = 0; ifx < abi ->if_sum; ifx++){
+			memset(&cfg,0,sizeof(struct wifi_adv_cfg));
+			cfg.size_of_struct = sizeof(struct wifi_adv_cfg);
 			wl_adv_get(ifx,&cfg);
-			json_tmp = cJSON_GetObjectItem(json,"single");
+			json_tmp = cJSON_GetObjectItem(json,"Private");
 			json_wifi = cJSON_GetObjectItem(json_tmp,"channel");
 			cfg.chn =  json_wifi->valueint;
 			json_wifi = cJSON_GetObjectItem(json_tmp,"wl_power");
@@ -695,17 +733,24 @@ int apply_cfg(char* param){
 				cfg.wifiMode = WIFI_MODE_11B|WIFI_MODE_11G|WIFI_MODE_11N;
 				break;
 			}
-			if( wl_adv_set(ifx,&cfg) != 0)
+			int ret;
+			if( (ret  = wl_adv_set(ifx,&cfg)) != 0){
+				DEBUG_PRINT("5555555555555%d\n",ret);
 				return -1;
+			}
 		}
 	}else{
+		i = 0;
+		wl_abi_get(&abi);
 		for(ifx = 0; ifx < abi ->if_sum; ifx++){
 			ifs = &abi->ifs[ifx];
 			for(idx = 0; idx < ifs->ext_sum; idx++){
 				if( i < 4){
 					wifi_cfg_array[i].enable = 0;
-					if( wl_set_ssid(ifx,idx,&wifi_cfg_array[i]) != 0)
+					if( wl_set_ssid(ifx,idx,&wifi_cfg_array[i]) != 0){
+						DEBUG_PRINT("666666666\n");
 						return -1;
+					}
 					i++;
 				}
 			}
@@ -713,11 +758,16 @@ int apply_cfg(char* param){
 	}
 
 	json_wifi = cJSON_GetObjectItem(json_tmp,"lanip");
+	DEBUG_PRINT("lanip:%s\n",json_wifi->valuestring);
 	struct nos_lan_cfg lan;
+	memset(&lan,0,sizeof(nos_lan_cfg));
+	lan.size_of_struct = sizeof(nos_lan_cfg);
 	get_lan_config(&lan);
 	lan.ip.s_addr = inet_addr(json_wifi->valuestring);
-	if( set_lan_config(&lan) != 0)
+	if( set_lan_config(&lan) != 0){
+		DEBUG_PRINT("7777777\n");
 		return -1;
+	}
 	return 0;
 }
 
@@ -730,8 +780,8 @@ void proc_newparam(cJSON *json){
 
 	json_tmp = cJSON_GetObjectItem(json,"Parameter");
 	if( json_tmp != NULL){
-		char* param = base64_decode(json_tmp->string,strlen(json_tmp->string),0);
-		DEBUG_PRINT("config param:%s\n",param);
+		char* param = base64_decode(json_tmp->valuestring,strlen(json_tmp->valuestring),0);
+		//DEBUG_PRINT("config param:%s\n",param);
 
 		json_re = cJSON_CreateObject();
 		if( apply_cfg(param) == 0){
@@ -747,7 +797,8 @@ void proc_newparam(cJSON *json){
 		cJSON_AddNumberToObject(json_re, "ID", id);
 		out = cJSON_Print(json_re);
 
-		client_write(out,strlen(out));
+		DEBUG_PRINT("%s\n",out);
+		//client_write(out,strlen(out));
 		cJSON_Delete(json_re);
 		free(out);
 	}
