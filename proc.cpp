@@ -430,6 +430,7 @@ void proc_hert_check(int ret,cJSON *json){
 	}
 }
 
+int interval;
 void proc_reg_second(int ret,cJSON *json){
 
 	cJSON *json_tmp;
@@ -443,8 +444,8 @@ void proc_reg_second(int ret,cJSON *json){
 	case GOOD_DEV:
 		json_tmp = cJSON_GetObjectItem(json,"Interval");
 		if (json_tmp) {
-			int interval =  json_tmp->valueint;
-			hert_check(interval);
+			interval =  json_tmp->valueint;
+			Get_Param();
 		}
 		break;
 	default:
@@ -535,7 +536,9 @@ int apply_cfg(char* param){
 	json_wifi = cJSON_GetObjectItem(json_tmp,"radio");
 	DEBUG_PRINT("ccccccccccc\n");
 	int radio = json_wifi->valueint;
-
+	json_wifi = cJSON_GetObjectItem(json_tmp,"redirect_url");
+	str_redirect_url = string(json_wifi->valuestring);
+	DEBUG_PRINT("redirect_url:%s\n",str_redirect_url.c_str());
 	DEBUG_PRINT("i=%d\n",i);
 	if( radio ==  1){
 		for(int j = 0;j < i; j++){
@@ -798,7 +801,7 @@ void proc_newparam(cJSON *json){
 		out = cJSON_Print(json_re);
 
 		DEBUG_PRINT("%s\n",out);
-		//client_write(out,strlen(out));
+		client_write(out,strlen(out));
 		cJSON_Delete(json_re);
 		free(out);
 	}
@@ -807,11 +810,14 @@ void proc_newparam(cJSON *json){
 void proc_getParam(int ret,cJSON *json){
 	switch (ret) {
 	case 0:
+		c_state = c_proc_param;
 		proc_newparam(json);
 		break;
 
 	case -1:
 		DEBUG_PRINT("param no change\n");
+		DEBUG_PRINT("ffffffffffff\n");
+		info_client_action_first();
 		break;
 	}
 }
@@ -823,6 +829,14 @@ void proc_info_client_action(int ret,cJSON *json){
 		DEBUG_PRINT("info_client_action error -1\n");
 		re_register();
 		break;
+	}
+
+	if( ret != -1){
+		if( b_info_up_stat_info == false){
+			hert_check(interval);
+			start_up_stat_info();
+			b_info_up_stat_info = true;
+		}
 	}
 }
 
@@ -844,6 +858,7 @@ void parse_json(char* buf,unsigned int len){
 			if( json_tmp )
 			{
 				if( strcmp(json_tmp->valuestring,"newParameter") == 0){
+					DEBUG_PRINT("newParameter\n");
 					proc_newparam(json);
 				}
 			}else{
@@ -862,19 +877,12 @@ void parse_json(char* buf,unsigned int len){
 				proc_reg_second(ret,json);
 			}else if(c_state == c_hert_check){
 				proc_hert_check(ret,json);
-				if( b_get_param == false){
-					Get_Param();
-					b_get_param = true;
-				}
 			}else if(c_state == c_get_param){
+				b_recv_suc = true;
 				proc_getParam(ret,json);
-				info_client_action_first();
 			}else if( c_state == c_info_client){
+				b_recv_suc = true;
 				proc_info_client_action(ret,json);
-				if( b_info_up_stat_info == false){
-					start_up_stat_info();
-					b_info_up_stat_info = true;
-				}
 			}
 		}
 	}

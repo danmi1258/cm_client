@@ -74,7 +74,7 @@ void on_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res);
 void check_recv(uv_timer_t *handle);
 void after_wirte(uv_write_t *req, int status);
 void check_connect_timer_fun(uv_timer_t *handle);
-
+void reconnect(uv_timer_t *handle);
 
 
 void nlk_msg_thread(uv_work_t *req){
@@ -240,6 +240,7 @@ void after_wirte(uv_write_t *req, int status){
 	DEBUG_PRINT("after_wirte\n");
 	if (status < 0) {
 		DEBUG_PRINT("Write error %s\n",uv_strerror(status));
+		uv_timer_start(&timer_reconnect, reconnect, 0, 0);
 		return;
 	}
 
@@ -261,7 +262,7 @@ void after_wirte(uv_write_t *req, int status){
 				uv_timer_start(&timer_re_resolved,re_resolved,4*60*1000,0);
 			}
 		}
-	}else if( c_state == c_registe_second ){
+	}else if( (c_state == c_registe_second) || (c_state == c_get_param) || (c_state == c_info_client)){
 		b_recv_suc = false;
 		if( check_recv_count == 0){
 			DEBUG_PRINT("c_registe_second check_recv_count == 0\n");
@@ -270,6 +271,9 @@ void after_wirte(uv_write_t *req, int status){
 			DEBUG_PRINT("c_registe_second check_recv_count != 0\n");
 			uv_timer_start(&timer_check_recv, check_recv, 180*1000, 0);
 		}
+	}else if( c_state == c_proc_param ){
+		DEBUG_PRINT("ffffffffffff\n");
+		info_client_action_first();
 	}
 	DEBUG_PRINT("22222222222222\n");
 }

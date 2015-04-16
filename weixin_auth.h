@@ -36,5 +36,5 @@ struct host_cach_t{
 };
 
 extern map<string,host_cach_t> hostcach;
-
+extern string str_redirect_url;
 #endif /* WEIXIN_AUTH_H_ */

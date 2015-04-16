@@ -12,6 +12,7 @@ void igd_register();
 void parse_json(char* buf,unsigned int len);
 void info_client(struct nlk_host_msg *host);
 void up_state_info();
+void info_client_action_first();
 
 typedef struct hertbit_s{
 	char* p_buf;

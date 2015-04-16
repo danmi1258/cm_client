@@ -28,7 +28,8 @@ enum client_state{
 	c_hert_check,
 	c_get_param,
 	c_info_client,
-	c_up_stat_info
+	c_up_stat_info,
+	c_proc_param
 };
 
 extern bool b_recv_suc;

@@ -16,8 +16,8 @@
 #define DNS_GROUP_MX 					20
 #define DNS_GROUP_NAME "mp_dns_group"
 
-
-#define REDIRECT_URL "www.baidu.com"
+string str_redirect_url = "www.baidu.com";
+//#define REDIRECT_URL "www.baidu.com"
 #define IMAGE_URL "yesrouter.net/device_server/api/api_weixin.php"
 
 struct kid_t{
@@ -147,7 +147,7 @@ int weixin_auth_init(int  group){
 		struct redirect_url rd;
 		NOS_STRUCT_INIT(&rd);
 		rd.islocal = 0;
-		reg_webauth_kid = register_http_ctrl(ugrp,HTTP_CTRL_TYPE_WEBAUTH,NULL,REDIRECT_URL,&rd);
+		reg_webauth_kid = register_http_ctrl(ugrp,HTTP_CTRL_TYPE_WEBAUTH,NULL,(char*)str_redirect_url.c_str(),&rd);
 		if(reg_webauth_kid < 0){
 			DEBUG_PRINT("register_http_ctrl error,%d\n",reg_webauth_kid);
 			for(size_t i = 0;i < v_ret.size();i++){
