@@ -31,7 +31,7 @@ uv_loop_t *loop;
 uv_buf_t readbuffer_;//接受数据的buf
 uv_buf_t writebuffer_;//写数据的buf
 
-uv_write_t client_write_t;
+uv_write_t *client_write_t;
 uv_tcp_t client_sock;
 uv_connect_t connect_t;
 uv_getaddrinfo_t resolver;
@@ -207,7 +207,8 @@ void async_client_write_fun(uv_async_t *handle){
 	ptr = ptr + sizeof(uint32_t);
 	memcpy(ptr,p,len);
 	writebuffer_.len = len + sizeof(uint32_t);
-	uv_write(&client_write_t,( uv_stream_t*)&client_sock,&writebuffer_,1,after_wirte);
+	client_write_t =  (uv_write_t*)malloc(sizeof(uv_write_t));
+	uv_write(client_write_t,( uv_stream_t*)&client_sock,&writebuffer_,1,after_wirte);
 	free(p);
 	DEBUG_PRINT("async_client_write_fun end\n");
 }
@@ -221,7 +222,8 @@ void client_write(char* buf,int len){
 	memcpy(ptr,buf,len);
 	writebuffer_.len = len + sizeof(uint32_t);
 	DEBUG_PRINT("client_write%s+++%d\n",writebuffer_.base+sizeof(uint32_t),writebuffer_.len);
-	int r  = uv_write(&client_write_t,( uv_stream_t*)&client_sock,&writebuffer_,1,after_wirte);
+	client_write_t =  (uv_write_t*)malloc(sizeof(uv_write_t));
+	int r  = uv_write(client_write_t,( uv_stream_t*)&client_sock,&writebuffer_,1,after_wirte);
 	if( r < 0){
 		DEBUG_PRINT("Write error %s\n",uv_strerror(r));
 	}
@@ -239,8 +241,10 @@ void after_wirte(uv_write_t *req, int status){
 
 	DEBUG_PRINT("after_wirte\n");
 	if (status < 0) {
+		uv_timer_stop(&timer_check_connect);
 		DEBUG_PRINT("Write error %s\n",uv_strerror(status));
 		uv_timer_start(&timer_reconnect, reconnect, 0, 0);
+		free(req);
 		return;
 	}
 
@@ -275,6 +279,7 @@ void after_wirte(uv_write_t *req, int status){
 		DEBUG_PRINT("ffffffffffff\n");
 		info_client_action_first();
 	}
+	free(req);
 	DEBUG_PRINT("22222222222222\n");
 }
 
@@ -314,7 +319,8 @@ void on_read(uv_stream_t *client, ssize_t nread, const uv_buf_t *buf) {
 		}
 	}
 
-	if( (c_state == c_registe_first) || ( c_state == c_registe_second )  ){
+	if( (c_state == c_registe_first) || ( c_state == c_registe_second ) ||
+			(c_state == c_get_param) || (c_state == c_info_client) ){
 		uv_timer_stop(&timer_check_recv);
 		check_recv_count = 0;
 	}
@@ -394,6 +400,7 @@ void check_connect_timer_fun(uv_timer_t *handle){
 void on_connect(uv_connect_t* req, int status){
 
 	DEBUG_PRINT("++++++TCP Connect++++++++++++\n");
+	uv_timer_stop(&timer_check_connect);
 	if (status < 0) {
 		//fprintf(stderr, "on_connect callback callback error %s\n", uv_err_name(status));
 		DEBUG_PRINT("on_connect callback callback error %s\n",uv_err_name(status));
@@ -409,7 +416,6 @@ void on_connect(uv_connect_t* req, int status){
 		return;
 	}
 
-	uv_timer_stop(&timer_check_connect);
 	uv_read_start((uv_stream_t*) &client_sock, alloc_buffer, on_read);
 
 	igd_register();
@@ -446,15 +452,18 @@ void on_resolved(uv_getaddrinfo_t *resolver, int status, struct addrinfo *res) {
 
 void re_register(){
 	DEBUG_PRINT("re_register\n");
+	uv_timer_stop(&timer_check_connect);
 	uv_timer_start(&timer_re_register, reconnect, 150*60*1000, 0); //150
 }
 
 void re_register2(){
+	uv_timer_stop(&timer_check_connect);
 	uv_timer_start(&timer_re_register, reconnect, 0, 0);
 }
 
 void async_re_register_fun(uv_async_t *handle){
 	DEBUG_PRINT("async_re_register_fun\n");
+	uv_timer_stop(&timer_check_connect);
 	uv_timer_start(&timer_re_register, reconnect, 15*1000, 0);
 }
 void after_up_state_inf_thread_exit(uv_work_t *req, int status){

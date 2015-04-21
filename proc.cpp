@@ -790,6 +790,7 @@ void proc_newparam(cJSON *json){
 		if( apply_cfg(param) == 0){
 			json_tmp = cJSON_GetObjectItem(json,"MagicNum");
 			strMagicNum = string(json_tmp->valuestring);
+			DEBUG_PRINT("MagicNumber:%s\n",strMagicNum.c_str());
 			cJSON_AddNumberToObject(json_re, "Result", 0);
 			DEBUG_PRINT("apply_cfg success\n");
 		}
